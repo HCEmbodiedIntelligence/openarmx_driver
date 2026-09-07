@@ -329,13 +329,13 @@ ros2 topic info -v /openarmx1/right_forward_position_controller/commands
 
 ### 4.2 启动 HC 栈
 
-先在开发机生成并验证驱动插件、模型插件和整机组合清单，再由
-`humanoid_manager` 按顺序部署。首次联调必须关闭 VR：
+先在开发机生成并验证驱动插件和模型插件，再导入 `humanoid_manager`。随后在网页
+“机器人配置”中选择这两个插件，创建 `openarmx_v10_bimanual`。组合清单由管理器内部生成。
+首次联调必须关闭 VR：
 
 ```bash
 ros2 run humanoid_manager humanoid_pluginctl.py deploy openarmx-driver.zip
 ros2 run humanoid_manager humanoid_pluginctl.py deploy openarmx-v10-model.zip
-ros2 run humanoid_manager humanoid_pluginctl.py deploy openarmx-v10-composition.zip
 ros2 launch robot_bringup registered_robot.launch.py \
   robot_id:=openarmx_v10_bimanual \
   start_teleop:=false
