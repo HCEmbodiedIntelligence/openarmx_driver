@@ -1,0 +1,11 @@
+<library path="openarmx_ros2_control_driver">
+  <class
+    name="openarmx_driver/OpenArmXRos2ControlDriver"
+    type="openarmx_driver::OpenArmXRos2ControlDriver"
+    base_class_type="humanoid_driver_interface::RobotDriverPlugin">
+    <description>
+      Bridges the humanoid platform joint interface to OpenArmX bimanual ros2_control position
+      controllers while preserving measured gripper positions.
+    </description>
+  </class>
+</library>

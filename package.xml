@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>openarmx_driver</name>
+  <version>0.1.0</version>
+  <description>OpenArmX ros2_control device plugin for the humanoid driver runtime.</description>
+  <maintainer email="czy33114@gmail.com">czy</maintainer>
+  <license>Proprietary</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>humanoid_driver_interface</depend>
+  <depend>pluginlib</depend>
+  <depend>rclcpp</depend>
+  <depend>sensor_msgs</depend>
+  <depend>std_msgs</depend>
+
+  <test_depend>ament_cmake_gtest</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+    <humanoid_driver_interface plugin="${prefix}/plugins/openarmx_driver_plugins.xml"/>
+  </export>
+</package>
