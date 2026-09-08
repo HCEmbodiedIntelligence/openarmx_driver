@@ -74,7 +74,7 @@ joint trajectory 控制器，它们会争用相同的 position command interface
 ### 2.1 位置命令数组顺序
 
 官方标准夹爪配置中，每侧 forward position controller 接收 8 个值。消息没有关节名，
-只能依靠固定数组下标。
+只能依靠固定数组下标。该默认配置不能与已经解耦的 HC 手臂/夹爪运行时直接共用。
 
 左侧顺序：
 
@@ -102,12 +102,10 @@ joint trajectory 控制器，它们会争用相同的 position command interface
 7  openarmx_right_finger_joint1
 ```
 
-当前 HC motion profile 只控制 14 个手臂关节。插件发布 8 元素命令时，必须用最近一次有效反馈
-保持左右夹爪的当前位置，或者在独立的上层夹爪命令到达后更新第 8 个值。不能向配置为 8 轴的
-控制器发送 7 个值，也不能把缺失的夹爪命令默认为零。
-
-如果实际机器人不带夹爪，应使用与硬件 URDF 一致的 7 轴控制器配置，并将插件显式配置为
-`include_gripper=false`，不能仅靠少发一个数组元素适配。
+当前 HC 的 `openarmx_driver` 严格只控制 14 个手臂关节，每侧只发布 7 个值。必须使用
+`humanoid_gripper/config/v10_controllers/openarmx_v10_split_controllers.yaml`：左右手臂 controller
+各声明 7 个手臂关节，左右夹爪 controller 各自只声明一个 `finger_joint1`。不能向官方 8 轴
+controller 发送 7 个值，也不能让两个 controller 同时声明同一 position command interface。
 
 ### 2.2 Namespace
 
@@ -117,11 +115,15 @@ joint trajectory 控制器，它们会争用相同的 position command interface
 /openarmx1/joint_states
 /openarmx1/left_forward_position_controller/commands
 /openarmx1/right_forward_position_controller/commands
+/openarmx1/left_gripper_controller/commands
+/openarmx1/right_gripper_controller/commands
 /openarmx1/controller_manager
 ```
 
-插件配置必须填写解析后的完整 Topic。不要假设所有部署都位于根 namespace；启动后以
-`ros2 topic list` 和 `ros2 topic info -v` 的实际结果为准。
+手臂和夹爪插件配置都必须填写解析后的完整 Topic。使用 `arm_prefix:=openarmx1` 时，应在
+manager 的“驱动参数”和“夹爪驱动”页把模板中的根话题改成上述 `/openarmx1/...` 话题。
+不要假设所有部署都位于根 namespace；启动后以 `ros2 topic list` 和
+`ros2 topic info -v` 的实际结果为准。
 
 ## 3. HC 侧 OpenArmX 插件
 
@@ -138,7 +140,7 @@ openarmx_driver/OpenArmXRos2ControlDriver
 
 `configure()`：
 
-- 读取 state、左右命令 Topic、是否包含夹爪、反馈超时等参数；
+- 读取 state、左右手臂命令 Topic和反馈超时等参数；
 - 建立逻辑关节名到 OpenArmX 官方关节名的映射；
 - 校验左右臂各 7 个关节且没有重复、缺失或未知名称；
 - 创建 `/joint_states` subscription 和左右 `Float64MultiArray` publisher。
@@ -147,7 +149,7 @@ openarmx_driver/OpenArmXRos2ControlDriver
 
 - 检查 ROS subscription 和左右 publisher 已创建；
 - 不阻塞等待第一条反馈，因为 runtime 此时尚未把所属节点加入 executor；
-- 第一条完整反馈通过回调完成 14 个手臂关节和可选两个 `finger_joint1` 的校验；
+- 第一条完整反馈通过回调完成 14 个手臂关节的校验；夹爪反馈由独立插件读取；
 - `startup_grace_s` 内无反馈返回 `kNoFeedback`，超期后转为通信故障。
 
 `activate()`：
@@ -262,9 +264,6 @@ humanoid_driver_runtime:
       - state_topic=/openarmx1/joint_states
       - left_command_topic=/openarmx1/left_forward_position_controller/commands
       - right_command_topic=/openarmx1/right_forward_position_controller/commands
-      - include_gripper=true
-      - left_gripper_joint=openarmx_left_finger_joint1
-      - right_gripper_joint=openarmx_right_finger_joint1
       - state_timeout_s=0.25
       - startup_grace_s=15.0
 ```
@@ -278,9 +277,9 @@ humanoid_driver_runtime:
 
 1. `JointState` 输入顺序随机变化时，输出逻辑状态仍正确；
 2. 缺少关节、重复关节、数组长度不一致、NaN 或 Inf 时拒绝反馈；
-3. 14 轴整机命令正确拆分为左右两个 8 元素数组；
+3. 14 轴整机命令正确拆分为左右两个 7 元素数组；
 4. 单臂或部分关节命令只更新目标关节，其余位置保持；
-5. 没有夹爪上层命令时，第 8 个值保持最近有效夹爪位置；
+5. 夹爪不出现在手臂命令数组中，夹爪反馈缺失不阻塞手臂反馈；
 6. 反馈超时和启动阶段无反馈时报告通信故障；
 7. `stopAll()` 重复调用安全，发布的是测量位置而不是零位；
 8. namespace 改变后不需要修改插件源码；
@@ -298,12 +297,21 @@ CAN 速率、CAN-FD 选择和网卡初始化必须按实际硬件版本及官方
 
 ```bash
 ros2 launch openarmx_bringup openarmx.bimanual.launch.py \
+  runtime_config_package:=humanoid_gripper \
+  controllers_file:=openarmx_v10_split_controllers.yaml \
   use_fake_hardware:=false \
   robot_controller:=forward_position_controller \
   control_mode:=mit \
   right_can_interface:=can0 \
   left_can_interface:=can1 \
   arm_prefix:=openarmx1
+```
+
+官方启动文件在 forward-position 模式下不会自动启动独立夹爪 controller，随后执行：
+
+```bash
+ros2 run controller_manager spawner left_gripper_controller right_gripper_controller \
+  -c /openarmx1/controller_manager
 ```
 
 如果不设置 `arm_prefix`，后续检查命令中的 `/openarmx1` 前缀也应删除。
@@ -323,25 +331,28 @@ ros2 topic info -v /openarmx1/right_forward_position_controller/commands
 
 - `joint_state_broadcaster`、左右 `forward_position_controller` 均为 `active`；
 - `/joint_states` 类型为 `sensor_msgs/msg/JointState`；
-- 状态包含左右各 7 个手臂关节；带夹爪时还包含左右 `finger_joint1`；
+- 状态包含左右各 7 个手臂关节以及左右 `finger_joint1`，但两类命令由不同 controller 接收；
 - 状态位置均为有限值，缓慢人工移动或低功率测试时方向与 URDF 一致；
 - 左右命令 Topic 各有且只有预期的控制器 subscriber。
 
 ### 4.2 启动 HC 栈
 
-先在开发机生成并验证驱动插件和模型插件，再导入 `humanoid_manager`。随后在网页
-“机器人配置”中选择这两个插件，创建 `openarmx_v10_bimanual`。组合清单由管理器内部生成。
+先在开发机生成并验证手臂驱动、模型和夹爪插件，再导入 `humanoid_manager`。随后在网页
+“机器人配置”中选择这三个插件，创建 `openarmx_v10_bimanual`。组合清单由管理器内部生成。
 首次联调必须关闭 VR：
 
 ```bash
-ros2 run humanoid_manager humanoid_pluginctl.py deploy openarmx-driver.zip
-ros2 run humanoid_manager humanoid_pluginctl.py deploy openarmx-v10-model.zip
-ros2 launch robot_bringup registered_robot.launch.py \
+PLUGIN_ROOT="$HOME/.local/share/humanoid-plugins"
+ros2 run humanoid_manager humanoid_pluginctl.py --root "$PLUGIN_ROOT" deploy openarmx-driver.zip
+ros2 run humanoid_manager humanoid_pluginctl.py --root "$PLUGIN_ROOT" deploy openarmx-v10-model.zip
+ros2 run humanoid_manager humanoid_pluginctl.py --root "$PLUGIN_ROOT" deploy openarmx-gripper.zip
+ros2 launch humanoid_manager managed_robot.launch.py \
+  plugin_root:="$PLUGIN_ROOT" \
   robot_id:=openarmx_v10_bimanual \
   start_teleop:=false
 ```
 
-`robot_bringup` 只解析 manager 已部署的 `robot_id`，不包含 OpenArmX 名称、真机/仿真分支或厂商
+`humanoid_manager` 只解析已部署的 `robot_id`，不包含 OpenArmX 名称、真机/仿真分支或厂商
 上电逻辑。OpenArmX 官方控制器应先由整机 supervisor 启动并完成只读检查。
 
 ### 4.3 首次运动

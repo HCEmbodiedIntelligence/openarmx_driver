@@ -72,8 +72,6 @@ private:
   std::array<double, kArmJointCount> latest_right_vendor_positions_{};
   std::array<double, kArmJointCount> left_targets_{};
   std::array<double, kArmJointCount> right_targets_{};
-  double latest_left_gripper_position_{0.0};
-  double latest_right_gripper_position_{0.0};
 
   Clock::time_point configured_at_{Clock::now()};
   Clock::time_point last_state_received_{Clock::now()};
@@ -84,12 +82,9 @@ private:
   std::string right_command_topic_;
   std::string left_group_{"left_arm"};
   std::string right_group_{"right_arm"};
-  std::string left_gripper_joint_{"openarmx_left_finger_joint1"};
-  std::string right_gripper_joint_{"openarmx_right_finger_joint1"};
   std::string last_feedback_error_;
   std::string last_command_error_;
 
-  bool include_gripper_{true};
   bool configured_{false};
   bool connected_{false};
   bool active_{false};

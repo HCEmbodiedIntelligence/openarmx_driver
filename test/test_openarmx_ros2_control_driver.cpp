@@ -93,7 +93,6 @@ protected:
   }
 
   hdi::DriverConfiguration configuration(
-    const bool include_gripper = true,
     const std::string & state_timeout = "0.25",
     const std::string & startup_grace = "1.0") const
   {
@@ -110,17 +109,13 @@ protected:
       {"right_command_topic", prefix_ + "/right_commands"},
       {"left_group", "left_arm"},
       {"right_group", "right_arm"},
-      {"include_gripper", include_gripper ? "true" : "false"},
-      {"left_gripper_joint", "openarmx_left_finger_joint1"},
-      {"right_gripper_joint", "openarmx_right_finger_joint1"},
       {"state_timeout_s", state_timeout},
       {"startup_grace_s", startup_grace},
     };
     return result;
   }
 
-  sensor_msgs::msg::JointState stateMessage(
-    const bool include_gripper = true, const double position_shift = 0.0) const
+  sensor_msgs::msg::JointState stateMessage(const double position_shift = 0.0) const
   {
     sensor_msgs::msg::JointState message;
     for (std::size_t index = 0U; index < 7U; ++index) {
@@ -132,16 +127,6 @@ protected:
       message.position.push_back(position_shift - 0.2 * static_cast<double>(index + 1U));
       message.velocity.push_back(-0.02 * static_cast<double>(index + 1U));
       message.effort.push_back(-1.0 - static_cast<double>(index));
-    }
-    if (include_gripper) {
-      message.name.push_back("openarmx_left_finger_joint1");
-      message.position.push_back(position_shift + 0.42);
-      message.velocity.push_back(0.0);
-      message.effort.push_back(0.0);
-      message.name.push_back("openarmx_right_finger_joint1");
-      message.position.push_back(position_shift + 0.37);
-      message.velocity.push_back(0.0);
-      message.effort.push_back(0.0);
     }
     return message;
   }
@@ -241,10 +226,6 @@ TEST_F(OpenArmXDriverTest, RejectsInvalidParametersAndIncompleteMappings)
 
   config = configuration();
   config.parameters["unknown_parameter"] = "value";
-  expectInvalid(config);
-
-  config = configuration();
-  config.parameters["include_gripper"] = "yes";
   expectInvalid(config);
 
   config = configuration();
@@ -357,7 +338,7 @@ TEST_F(OpenArmXDriverTest, RejectsMalformedDuplicateMissingAndNonfiniteFeedback)
   EXPECT_EQ(result.error, hdi::DriverError::kNoFeedback);
 }
 
-TEST_F(OpenArmXDriverTest, SplitsShuffledFourteenAxisCommandAndPreservesMeasuredGrippers)
+TEST_F(OpenArmXDriverTest, SplitsShuffledFourteenAxisCommand)
 {
   oad::OpenArmXRos2ControlDriver driver;
   startDriver(driver, configuration());
@@ -382,14 +363,12 @@ TEST_F(OpenArmXDriverTest, SplitsShuffledFourteenAxisCommandAndPreservesMeasured
   ASSERT_TRUE(driver.writeJointCommand(command));
   ASSERT_TRUE(waitForCommandCount(1U));
 
-  ASSERT_EQ(left_commands_.back().data.size(), 8U);
-  ASSERT_EQ(right_commands_.back().data.size(), 8U);
+  ASSERT_EQ(left_commands_.back().data.size(), 7U);
+  ASSERT_EQ(right_commands_.back().data.size(), 7U);
   for (std::size_t index = 0U; index < 7U; ++index) {
     EXPECT_DOUBLE_EQ(left_commands_.back().data[index], 10.0 + static_cast<double>(index));
     EXPECT_DOUBLE_EQ(right_commands_.back().data[index], -10.0 - static_cast<double>(index));
   }
-  EXPECT_DOUBLE_EQ(left_commands_.back().data[7], 0.42);
-  EXPECT_DOUBLE_EQ(right_commands_.back().data[7], 0.37);
 }
 
 TEST_F(OpenArmXDriverTest, PartialCommandsMergeWithPreviousSafeTargets)
@@ -417,27 +396,6 @@ TEST_F(OpenArmXDriverTest, PartialCommandsMergeWithPreviousSafeTargets)
   EXPECT_DOUBLE_EQ(left_commands_.back().data[1], 0.2);
   EXPECT_DOUBLE_EQ(right_commands_.back().data[3], -8.0);
   EXPECT_DOUBLE_EQ(right_commands_.back().data[4], -1.0);
-}
-
-TEST_F(OpenArmXDriverTest, UsesNewestFeedbackForGripperHoldWithoutResettingArmTargets)
-{
-  oad::OpenArmXRos2ControlDriver driver;
-  startDriver(driver, configuration());
-  hdi::JointState state;
-  ASSERT_TRUE(publishUntilReadable(driver, stateMessage(), state));
-
-  auto newer = stateMessage(true, 0.5);
-  ASSERT_TRUE(publishUntilReadable(driver, newer, state));
-  hdi::JointCommand command;
-  command.joint_names = {leftLogicalName(0U)};
-  command.positions = {2.0};
-  ASSERT_TRUE(driver.writeJointCommand(command));
-  ASSERT_TRUE(waitForCommandCount(1U));
-
-  EXPECT_DOUBLE_EQ(left_commands_.back().data[0], 2.0);
-  EXPECT_DOUBLE_EQ(left_commands_.back().data[1], 0.2);
-  EXPECT_DOUBLE_EQ(left_commands_.back().data[7], 0.92);
-  EXPECT_DOUBLE_EQ(right_commands_.back().data[7], 0.87);
 }
 
 TEST_F(OpenArmXDriverTest, RejectsMalformedUnknownDuplicateAndNonfiniteCommands)
@@ -475,7 +433,7 @@ TEST_F(OpenArmXDriverTest, RejectsMalformedUnknownDuplicateAndNonfiniteCommands)
 TEST_F(OpenArmXDriverTest, ReportsStartupGraceThenCommunicationTimeoutWithoutFeedback)
 {
   oad::OpenArmXRos2ControlDriver driver;
-  startDriver(driver, configuration(true, "0.25", "0.02"));
+  startDriver(driver, configuration("0.25", "0.02"));
   hdi::JointState state;
   auto result = driver.readJointState(state);
   EXPECT_FALSE(result);
@@ -490,7 +448,7 @@ TEST_F(OpenArmXDriverTest, ReportsStartupGraceThenCommunicationTimeoutWithoutFee
 TEST_F(OpenArmXDriverTest, RejectsCommandsAndReadsAfterStateTimeout)
 {
   oad::OpenArmXRos2ControlDriver driver;
-  startDriver(driver, configuration(true, "0.02", "1.0"));
+  startDriver(driver, configuration("0.02", "1.0"));
   hdi::JointState state;
   ASSERT_TRUE(publishUntilReadable(driver, stateMessage(), state));
   std::this_thread::sleep_for(30ms);
@@ -515,7 +473,7 @@ TEST_F(OpenArmXDriverTest, StopAllIsIdempotentAndHoldsLatestMeasuredPositions)
   ASSERT_TRUE(driver.writeJointCommand(command));
   ASSERT_TRUE(waitForCommandCount(1U));
 
-  ASSERT_TRUE(publishUntilReadable(driver, stateMessage(true, 0.5), state));
+  ASSERT_TRUE(publishUntilReadable(driver, stateMessage(0.5), state));
   ASSERT_TRUE(driver.stopAll());
   ASSERT_TRUE(driver.stopAll());
   ASSERT_TRUE(waitForCommandCount(3U));
@@ -527,15 +485,13 @@ TEST_F(OpenArmXDriverTest, StopAllIsIdempotentAndHoldsLatestMeasuredPositions)
       right_commands_[right_commands_.size() - 1U].data[index],
       0.5 - 0.2 * static_cast<double>(index + 1U));
   }
-  EXPECT_DOUBLE_EQ(left_commands_.back().data[7], 0.92);
-  EXPECT_DOUBLE_EQ(right_commands_.back().data[7], 0.87);
   EXPECT_EQ(driver.health().details.at("mode"), "holding");
 }
 
 TEST_F(OpenArmXDriverTest, StopAllPublishesLastMeasurementEvenWhenFeedbackIsStale)
 {
   oad::OpenArmXRos2ControlDriver driver;
-  startDriver(driver, configuration(true, "0.02", "1.0"));
+  startDriver(driver, configuration("0.02", "1.0"));
   hdi::JointState state;
   ASSERT_TRUE(publishUntilReadable(driver, stateMessage(), state));
   std::this_thread::sleep_for(30ms);
@@ -563,28 +519,12 @@ TEST_F(OpenArmXDriverTest, StopAllWithoutAnyFeedbackReturnsNoFeedback)
   EXPECT_TRUE(right_commands_.empty());
 }
 
-TEST_F(OpenArmXDriverTest, GripperDisabledAcceptsFourteenArmFeedbackAndPublishesSevenValues)
-{
-  oad::OpenArmXRos2ControlDriver driver;
-  startDriver(driver, configuration(false));
-  hdi::JointState state;
-  ASSERT_TRUE(publishUntilReadable(driver, stateMessage(false), state));
-
-  hdi::JointCommand command;
-  command.joint_names = {leftLogicalName(0U)};
-  command.positions = {1.5};
-  ASSERT_TRUE(driver.writeJointCommand(command));
-  ASSERT_TRUE(waitForCommandCount(1U));
-  EXPECT_EQ(left_commands_.back().data.size(), 7U);
-  EXPECT_EQ(right_commands_.back().data.size(), 7U);
-}
-
 TEST_F(OpenArmXDriverTest, HealthReportsLifecycleFreshnessHoldingTopicsErrorsAndSubscribers)
 {
   left_subscription_.reset();
   right_subscription_.reset();
   oad::OpenArmXRos2ControlDriver driver;
-  startDriver(driver, configuration(true, "0.02", "1.0"));
+  startDriver(driver, configuration("0.02", "1.0"));
   hdi::JointState state;
   ASSERT_TRUE(publishUntilReadable(driver, stateMessage(), state));
 

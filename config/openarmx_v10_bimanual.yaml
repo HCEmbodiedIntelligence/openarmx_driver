@@ -68,8 +68,5 @@ humanoid_driver_runtime:
       - right_command_topic=/right_forward_position_controller/commands
       - left_group=left_arm
       - right_group=right_arm
-      - include_gripper=true
-      - left_gripper_joint=openarmx_left_finger_joint1
-      - right_gripper_joint=openarmx_right_finger_joint1
       - state_timeout_s=0.25
       - startup_grace_s=15.0

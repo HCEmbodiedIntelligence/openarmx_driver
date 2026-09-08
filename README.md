@@ -1,5 +1,11 @@
 # OpenArmX driver plugin
 
+统一下载、构建及完整管理器导入包由 `robot_bringup/workspace.sh bundle` 提供，见
+[工作区说明](https://github.com/HCEmbodiedIntelligence/robot_bringup/blob/main/docs/workspace.md)。
+OpenArmX 模型部署模板随本仓库的 `deployment/openarmx_v10_bimanual` 管理；
+`tools/create_model_bundle.py` 从这些模板和官方 `openarmx_description` 的 URDF 生成模型插件。
+无需修改官方模型仓库，也不依赖该仓库的未跟踪文件。
+
 `openarmx_driver` is a device-layer plugin for `humanoid_driver_runtime`. It reuses the runtime's
 `rclcpp::Node` and bridges the platform joint API to the official OpenArmX v10 bimanual
 `ros2_control` topics. The package builds only the shared library
@@ -22,9 +28,8 @@ The three topic parameters are required. A root-topic real-hardware configuratio
 | output | `left_command_topic` | `/left_forward_position_controller/commands` | `std_msgs/msg/Float64MultiArray` |
 | output | `right_command_topic` | `/right_forward_position_controller/commands` | `std_msgs/msg/Float64MultiArray` |
 
-With `include_gripper=true`, each output contains the official seven arm joints followed by the
-configured `finger_joint1`. The gripper target always comes from the newest complete feedback; it
-is never initialized to zero. With `include_gripper=false`, each output contains seven values.
+Each output contains exactly the seven arm joints. Grippers are deliberately excluded from this
+package and are configured as independent `humanoid_gripper` plugins and ros2_control controllers.
 
 The plugin never publishes to the forward effort controllers. OpenArmX gravity compensation owns
 those topics and the MIT `tau_ff` path. Real deployments are expected to use OpenArmX's
@@ -40,9 +45,6 @@ those topics and the MIT `tau_ff` path. Real deployments are expected to use Ope
 | `right_command_topic` | required | Fully resolved right position-controller command topic |
 | `left_group` | `left_arm` | Expected vendor group for left mappings |
 | `right_group` | `right_arm` | Expected vendor group for right mappings |
-| `include_gripper` | `true` | Strictly `true` or `false` |
-| `left_gripper_joint` | `openarmx_left_finger_joint1` | Left gripper feedback name |
-| `right_gripper_joint` | `openarmx_right_finger_joint1` | Right gripper feedback name |
 | `state_timeout_s` | `0.25` | Positive feedback freshness timeout |
 | `startup_grace_s` | `15.0` | Positive grace period for the first executor-delivered state |
 
@@ -53,9 +55,9 @@ names may differ, and every state/command conversion applies the configured scal
 ## Safety behavior
 
 No command is published by `configure()`, `connect()`, or `activate()`. The first complete feedback
-sample seeds every arm target and both gripper holds. Commands may update any subset of platform
-joints; all other targets retain their previous safe values. `stopAll()` is idempotent and publishes
-the latest measured arm and gripper positions. If the last sample is stale it still attempts that
+sample seeds every arm target. Commands may update any subset of platform joints; all other targets
+retain their previous safe values. `stopAll()` is idempotent and publishes the latest measured arm
+positions. If the last sample is stale it still attempts that
 hold and reports the stale condition; without any valid sample it returns `kNoFeedback`.
 
 This software hold is not a replacement for a physical emergency stop or motor-side safety system.

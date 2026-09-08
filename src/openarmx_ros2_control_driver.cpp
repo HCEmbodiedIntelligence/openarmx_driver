@@ -40,17 +40,6 @@ double parsePositiveSeconds(const std::string & key, const std::string & value)
   return result;
 }
 
-bool parseBoolean(const std::string & key, const std::string & value)
-{
-  if (value == "true") {
-    return true;
-  }
-  if (value == "false") {
-    return false;
-  }
-  throw std::invalid_argument(key + " must be exactly 'true' or 'false'");
-}
-
 bool allFinite(const std::vector<double> & values)
 {
   return std::all_of(
@@ -98,9 +87,6 @@ OpenArmXRos2ControlDriver::Result OpenArmXRos2ControlDriver::configure(
   std::string right_command_topic;
   std::string left_group = "left_arm";
   std::string right_group = "right_arm";
-  std::string left_gripper_joint = "openarmx_left_finger_joint1";
-  std::string right_gripper_joint = "openarmx_right_finger_joint1";
-  bool include_gripper = true;
   double state_timeout_seconds = 0.25;
   double startup_grace_seconds = 15.0;
 
@@ -116,12 +102,6 @@ OpenArmXRos2ControlDriver::Result OpenArmXRos2ControlDriver::configure(
         left_group = value;
       } else if (key == "right_group") {
         right_group = value;
-      } else if (key == "include_gripper") {
-        include_gripper = parseBoolean(key, value);
-      } else if (key == "left_gripper_joint") {
-        left_gripper_joint = value;
-      } else if (key == "right_gripper_joint") {
-        right_gripper_joint = value;
       } else if (key == "state_timeout_s") {
         state_timeout_seconds = parsePositiveSeconds(key, value);
       } else if (key == "startup_grace_s") {
@@ -143,13 +123,6 @@ OpenArmXRos2ControlDriver::Result OpenArmXRos2ControlDriver::configure(
     return Result::failure(
       hdi::DriverError::kInvalidConfiguration,
       "left_group and right_group must be non-empty and distinct");
-  }
-  if (left_gripper_joint.empty() || right_gripper_joint.empty() ||
-    left_gripper_joint == right_gripper_joint)
-  {
-    return Result::failure(
-      hdi::DriverError::kInvalidConfiguration,
-      "left and right gripper joint names must be non-empty and distinct");
   }
   if (configuration.joints.size() != 2U * kArmJointCount) {
     return Result::failure(
@@ -180,14 +153,6 @@ OpenArmXRos2ControlDriver::Result OpenArmXRos2ControlDriver::configure(
     }
     indices_by_vendor_name.emplace(mapping.vendor_name, index);
   }
-  if (vendor_names.count(left_gripper_joint) != 0U ||
-    vendor_names.count(right_gripper_joint) != 0U)
-  {
-    return Result::failure(
-      hdi::DriverError::kInvalidConfiguration,
-      "gripper joints must not be included in the 14 platform arm mappings");
-  }
-
   std::array<std::size_t, kArmJointCount> left_indices{};
   std::array<std::size_t, kArmJointCount> right_indices{};
   for (std::size_t index = 0U; index < kArmJointCount; ++index) {
@@ -241,9 +206,6 @@ OpenArmXRos2ControlDriver::Result OpenArmXRos2ControlDriver::configure(
   right_command_topic_ = std::move(right_command_topic);
   left_group_ = std::move(left_group);
   right_group_ = std::move(right_group);
-  include_gripper_ = include_gripper;
-  left_gripper_joint_ = std::move(left_gripper_joint);
-  right_gripper_joint_ = std::move(right_gripper_joint);
   state_timeout_ = Duration(state_timeout_seconds);
   startup_grace_ = Duration(startup_grace_seconds);
   configured_at_ = Clock::now();
@@ -253,8 +215,6 @@ OpenArmXRos2ControlDriver::Result OpenArmXRos2ControlDriver::configure(
   latest_right_vendor_positions_.fill(0.0);
   left_targets_.fill(0.0);
   right_targets_.fill(0.0);
-  latest_left_gripper_position_ = 0.0;
-  latest_right_gripper_position_ = 0.0;
   last_feedback_error_.clear();
   last_command_error_.clear();
   configured_ = true;
@@ -469,7 +429,6 @@ hdi::DriverHealth OpenArmXRos2ControlDriver::health()
   result.details["state_topic"] = state_topic_;
   result.details["left_command_topic"] = left_command_topic_;
   result.details["right_command_topic"] = right_command_topic_;
-  result.details["include_gripper"] = booleanText(include_gripper_);
   result.details["last_feedback_error"] = last_feedback_error_;
   result.details["last_command_error"] = last_command_error_;
   const auto left_subscribers = left_command_publisher_ ?
@@ -588,19 +547,6 @@ void OpenArmXRos2ControlDriver::stateCallback(
     }
   }
 
-  double left_gripper_position = latest_left_gripper_position_;
-  double right_gripper_position = latest_right_gripper_position_;
-  if (include_gripper_) {
-    const auto left_gripper = indices.find(left_gripper_joint_);
-    const auto right_gripper = indices.find(right_gripper_joint_);
-    if (left_gripper == indices.end() || right_gripper == indices.end()) {
-      last_feedback_error_ = "OpenArmX JointState is missing one or both configured gripper joints";
-      return;
-    }
-    left_gripper_position = message->position[left_gripper->second];
-    right_gripper_position = message->position[right_gripper->second];
-  }
-
   std::array<double, kArmJointCount> left_vendor_positions{};
   std::array<double, kArmJointCount> right_vendor_positions{};
   for (std::size_t index = 0U; index < kArmJointCount; ++index) {
@@ -615,8 +561,6 @@ void OpenArmXRos2ControlDriver::stateCallback(
   latest_state_ = std::move(next_state);
   latest_left_vendor_positions_ = left_vendor_positions;
   latest_right_vendor_positions_ = right_vendor_positions;
-  latest_left_gripper_position_ = left_gripper_position;
-  latest_right_gripper_position_ = right_gripper_position;
   last_state_received_ = received_at;
   last_feedback_error_.clear();
   have_state_ = true;
@@ -650,11 +594,6 @@ OpenArmXRos2ControlDriver::Result OpenArmXRos2ControlDriver::publishTargetsLocke
   std_msgs::msg::Float64MultiArray right_message;
   left_message.data.assign(left_targets_.begin(), left_targets_.end());
   right_message.data.assign(right_targets_.begin(), right_targets_.end());
-  if (include_gripper_) {
-    left_message.data.push_back(latest_left_gripper_position_);
-    right_message.data.push_back(latest_right_gripper_position_);
-  }
-
   std::vector<std::string> errors;
   try {
     left_command_publisher_->publish(left_message);
@@ -703,7 +642,7 @@ OpenArmXRos2ControlDriver::Result OpenArmXRos2ControlDriver::publishHoldLocked(
     return Result::success(last_command_error_);
   }
   last_command_error_.clear();
-  return Result::success("holding latest measured OpenArmX arm and gripper positions");
+  return Result::success("holding latest measured OpenArmX arm positions");
 }
 
 }  // namespace openarmx_driver

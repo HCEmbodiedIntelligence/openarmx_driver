@@ -5,7 +5,7 @@
     base_class_type="humanoid_driver_interface::RobotDriverPlugin">
     <description>
       Bridges the humanoid platform joint interface to OpenArmX bimanual ros2_control position
-      controllers while preserving measured gripper positions.
+      controllers for the fourteen arm joints.
     </description>
   </class>
 </library>
