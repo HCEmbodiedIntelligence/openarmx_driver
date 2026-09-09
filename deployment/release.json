@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "robot_id": "openarmx_v10_bimanual",
+  "name": "OpenArmX v10 双臂",
+  "artifact_name": "openarmx-v10-complete.zip",
+  "plugins": [
+    {
+      "role": "driver",
+      "command": [
+        "/usr/bin/python3",
+        "${workspace}/src/openarmx_driver/tools/create_deployment_bundle.py",
+        "${workspace}/install/openarmx_driver",
+        "${output}"
+      ],
+      "installed_library": "${workspace}/install/openarmx_driver/lib/libopenarmx_ros2_control_driver.so"
+    },
+    {
+      "role": "model",
+      "command": [
+        "/usr/bin/python3",
+        "${workspace}/src/openarmx_driver/tools/create_model_bundle.py",
+        "${output}",
+        "--description-share",
+        "${workspace}/src/openarmx_description"
+      ]
+    },
+    {
+      "role": "gripper",
+      "command": [
+        "/usr/bin/python3",
+        "${workspace}/src/humanoid_gripper/tools/create_deployment_bundle.py",
+        "${workspace}/install/humanoid_gripper",
+        "${output}",
+        "--config",
+        "openarmx_v10_bimanual.yaml",
+        "--plugin-id",
+        "openarmx_v10_bimanual_gripper"
+      ],
+      "installed_library": "${workspace}/install/humanoid_gripper/lib/libhumanoid_ros_topic_gripper_driver.so"
+    }
+  ],
+  "files": [
+    "src/humanoid_gripper/config/v10_controllers/openarmx_v10_split_controllers.yaml"
+  ],
+  "notes": "官方硬件层使用每臂 7 轴、夹爪独立的控制器；配置见同目录 YAML。夹爪初始化随整机自动执行。"
+}

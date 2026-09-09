@@ -307,12 +307,12 @@ ros2 launch openarmx_bringup openarmx.bimanual.launch.py \
   arm_prefix:=openarmx1
 ```
 
-官方启动文件在 forward-position 模式下不会自动启动独立夹爪 controller，随后执行：
-
-```bash
-ros2 run controller_manager spawner left_gripper_controller right_gripper_controller \
-  -c /openarmx1/controller_manager
-```
+官方启动文件在 forward-position 模式下不会自动启动独立夹爪 controller。
+更新后的 HC 夹爪插件通过清单 `startup` 声明所需控制器；第二步启动 HC 时会自动等待
+controller_manager、加载并激活左右夹爪，不再需要手动运行 spawner。已激活的控制器会复用。
+需要更新管理器、重新打包导入夹爪插件，并在机器人配置中选择它、保存。
+本节使用 `/openarmx1`，打包前将 `humanoid_gripper/config/openarmx_v10_bimanual.startup.yaml`
+中的 controller-manager 参数同步设为 `/openarmx1/controller_manager`；根命名空间使用默认值。
 
 如果不设置 `arm_prefix`，后续检查命令中的 `/openarmx1` 前缀也应删除。
 
