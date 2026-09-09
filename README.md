@@ -6,6 +6,9 @@ OpenArmX 模型部署模板随本仓库的 `deployment/openarmx_v10_bimanual` �
 `tools/create_model_bundle.py` 从这些模板和官方 `openarmx_description` 的 URDF 生成模型插件。
 无需修改官方模型仓库，也不依赖该仓库的未跟踪文件。
 
+从原来的“两条 launch”迁移到统一入口，见 [真机日常启动](docs/start_on_robot.md)。
+该示例使用左 `can0`、右 `can1`，由入口管理厂商驱动、夹爪初始化、算法和已配置的相机。
+
 `openarmx_driver` is a device-layer plugin for `humanoid_driver_runtime`. It reuses the runtime's
 `rclcpp::Node` and bridges the platform joint API to the official OpenArmX v10 bimanual
 `ros2_control` topics. The package builds only the shared library
